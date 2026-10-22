@@ -1,5 +1,5 @@
 // 공통: 회차 확인, 한 문항씩 진행하는 응답 화면, 순위·표시 도구
-import { getSessionStatus, isConfigured, SESSION_RE } from './backend.js';
+import { getSessionStatus, getActiveSession, isConfigured, SESSION_RE } from './backend.js';
 
 export const $ = (s, el = document) => el.querySelector(s);
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,12 +17,15 @@ export const store = {
   del(k) { try { sessionStorage.removeItem(k); } catch {} }
 };
 
-// URL의 회차 ID를 확인하고, 해당 검사가 열려 있을 때만 sessionId를 돌려줌
+// 참가자 주소는 고정(/workshop/cbi/ 등). 강사가 관리화면에서 지정한 "현재 회차"를 사용.
+// (?session=회차ID 가 붙은 주소도 그대로 동작)
 export async function gate(root, flag) {
-  const sid = new URLSearchParams(location.search).get('session') || '';
-  if (!SESSION_RE.test(sid) || !isConfigured()) { showClosed(root); return null; }
+  if (!isConfigured()) { showClosed(root); return null; }
   root.innerHTML = '<div class="closed"><p class="tiny">불러오는 중…</p></div>';
   try {
+    let sid = new URLSearchParams(location.search).get('session') || '';
+    if (!sid) sid = (await getActiveSession()) || '';
+    if (!SESSION_RE.test(sid)) { showClosed(root); return null; }
     const st = await getSessionStatus(sid);
     if (!st.exists || !st[flag]) { showClosed(root); return null; }
     return sid;

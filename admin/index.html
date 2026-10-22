@@ -85,7 +85,7 @@ const TESTS = [
 ];
 
 let sessions = [], current = store.get('ws-admin:current') || '', unSessions = null, unCbi = null, cbiRows = [];
-let qrLib = null, renderedFor = '';
+let qrLib = null, renderedFor = '', active = '', unActive = null;
 
 if (!be.isConfigured()) {
   app.innerHTML = '<div class="card"><p>Firebase 설정(assets/firebase-config.js)이 아직 입력되지 않았습니다.</p></div>';
@@ -136,7 +136,7 @@ async function enter(user) {
         <button class="btn" type="submit">만들기</button>
       </form>
       <p class="msg" id="nm"></p>
-      <p class="tiny">영문·숫자·하이픈(-) 3~40자. 회차 ID는 참가자 주소와 QR에 그대로 들어가므로 병원명 약자·날짜 정도만 쓰고 개인 정보는 넣지 마세요.</p>
+      <p class="tiny">영문·숫자·하이픈(-) 3~40자. 새로 만든 회차는 바로 참가자 고정 주소(QR)에 연결됩니다. 이전 회차의 결과와 섞이지 않습니다.</p>
     </div>
     <div id="sess"></div>`;
 
@@ -145,14 +145,18 @@ async function enter(user) {
     const id = $('#nid').value.trim();
     const m = $('#nm'); m.textContent = ''; m.classList.remove('ok');
     if (!be.SESSION_RE.test(id)) { m.textContent = '영문·숫자·하이픈(-)만 3~40자로 입력해 주세요.'; return; }
-    try { await be.createSession(id); select(id); $('#nid').value = ''; m.classList.add('ok'); m.textContent = `회차 ${id}를 만들었습니다. 검사는 모두 닫힌 상태로 시작합니다.`; }
+    try { await be.createSession(id); await be.setActiveSession(id); select(id); $('#nid').value = ''; m.classList.add('ok'); m.textContent = `회차 ${id}를 만들고 참가자 주소에 연결했습니다. 검사는 모두 닫힌 상태로 시작합니다.`; }
     catch (err) { m.textContent = err.message === 'exists' ? '이미 있는 회차 ID입니다.' : '만들지 못했습니다. 권한이나 연결을 확인해 주세요.'; }
   };
   $('#sel').onchange = e => select(e.target.value);
 
+  unActive = await be.watchActiveSession(a => {
+    active = a; renderedFor = ''; renderSelect(); renderSession();
+  }, () => {});
   unSessions = await be.watchSessions(list => {
     sessions = list;
     if (current && !sessions.some(s => s.id === current)) current = '';
+    if (!current && active && sessions.some(s => s.id === active)) current = active;
     if (!current && sessions.length) current = sessions[0].id;
     renderSelect();
     renderSession();
@@ -164,7 +168,7 @@ async function enter(user) {
 function renderSelect() {
   const sel = $('#sel'); if (!sel) return;
   sel.innerHTML = sessions.length
-    ? sessions.map(s => `<option value="${esc(s.id)}" ${s.id === current ? 'selected' : ''}>${esc(s.id)}${s.ended ? ' (종료됨)' : ''}</option>`).join('')
+    ? sessions.map(s => `<option value="${esc(s.id)}" ${s.id === current ? 'selected' : ''}>${esc(s.id)}${s.id === active ? ' · 참가자 주소 연결됨' : ''}${s.ended ? ' (종료됨)' : ''}</option>`).join('')
     : '<option value="">아직 만든 회차가 없습니다</option>';
 }
 
@@ -173,8 +177,9 @@ function select(id) {
   renderSelect(); renderSession();
 }
 
-function urlFor(t, sid) {
-  return new URL(`../${t.path}/?session=${encodeURIComponent(sid)}`, location.href).href;
+// 참가자 주소는 회차와 상관없이 고정
+function urlFor(t) {
+  return new URL(`../${t.path}/`, location.href).href;
 }
 
 function renderSession() {
@@ -186,11 +191,30 @@ function renderSession() {
   if (renderedFor === s.id) { updateFlags(s); return; }
   renderedFor = s.id;
 
+  const isActive = s.id === active;
   box.innerHTML = `
     <div class="card">
       <div class="row" style="justify-content:space-between">
-        <div><div class="eyebrow" style="margin-bottom:2px">현재 회차</div><div class="sid">${esc(s.id)}</div></div>
+        <div class="sec-title">오늘 참여자들의 현재 소진</div>
+        <button class="btn small" id="presentBtn">발표 화면</button>
+      </div>
+      <div class="live-count">응답자 <b id="cN">0</b>명</div>
+      <div class="bars avg-row" id="cBars"></div>
+      <p class="tiny" style="margin-top:16px">현재 회차에서 응답을 완료한 참여자들의 단순 평균입니다.</p>
+    </div>
+
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div><div class="eyebrow" style="margin-bottom:2px">선택한 회차</div><div class="sid">${esc(s.id)}</div></div>
         <span class="pill" id="endedPill" hidden>종료됨</span>
+      </div>
+      ${isActive
+        ? '<p class="small" style="margin-top:10px">이 회차가 참가자 고정 주소(QR)에 연결되어 있습니다.</p>'
+        : '<div class="row" style="margin-top:10px"><span class="small muted">이 회차는 참가자 주소에 연결되어 있지 않습니다.</span><button class="btn line small" id="linkBtn">이 회차를 참가자 주소에 연결</button></div>'}
+      <div class="row" style="margin-top:14px">
+        <button class="btn small" id="openAll">세 검사 모두 열기</button>
+        <button class="btn line small" id="closeAll">세 검사 모두 닫기</button>
       </div>
       <div class="tests">
         ${TESTS.map(t => `<div class="test" data-t="${t.short}">
@@ -202,7 +226,7 @@ function renderSession() {
             <div class="row" style="margin-bottom:10px">
               <button class="btn small" data-toggle="${t.flag}"></button>
             </div>
-            <input class="url" readonly value="${esc(urlFor(t, s.id))}" aria-label="${esc(t.name)} 참가자 주소">
+            <input class="url" readonly value="${esc(urlFor(t))}" aria-label="${esc(t.name)} 참가자 주소 (고정)">
             <div class="row" style="margin-top:8px">
               <button class="btn line mini" data-copy="${t.short}">주소 복사</button>
               <span class="tiny" data-copied="${t.short}"></span>
@@ -217,16 +241,6 @@ function renderSession() {
           </div>
         </div>`).join('')}
       </div>
-    </div>
-
-    <div class="card">
-      <div class="row" style="justify-content:space-between">
-        <div class="sec-title">오늘 참여자들의 현재 소진</div>
-        <button class="btn small" id="presentBtn">발표 화면</button>
-      </div>
-      <div class="live-count">응답자 <b id="cN">0</b>명</div>
-      <div class="bars avg-row" id="cBars"></div>
-      <p class="tiny" style="margin-top:16px">현재 회차에서 응답을 완료한 참여자들의 단순 평균입니다.</p>
     </div>
 
     <div class="card">
@@ -253,14 +267,25 @@ function renderSession() {
     b.disabled = false;
   });
   TESTS.forEach(t => {
-    const url = urlFor(t, s.id);
+    const url = urlFor(t);
     box.querySelector(`[data-copy="${t.short}"]`).onclick = () => copy(url, box.querySelector(`[data-copied="${t.short}"]`));
     drawQr(url, box.querySelector(`[data-qr="${t.short}"]`));
-    box.querySelector(`[data-png="${t.short}"]`).onclick = () => downloadPng(url, `${s.id}-${t.short}-QR.png`);
-    box.querySelector(`[data-svg="${t.short}"]`).onclick = () => downloadSvg(url, `${s.id}-${t.short}-QR.svg`);
+    box.querySelector(`[data-png="${t.short}"]`).onclick = () => downloadPng(url, `workshop-${t.short}-QR.png`);
+    box.querySelector(`[data-svg="${t.short}"]`).onclick = () => downloadSvg(url, `workshop-${t.short}-QR.svg`);
   });
 
   $('#presentBtn').onclick = openPresent;
+  const lb = $('#linkBtn');
+  if (lb) lb.onclick = async () => {
+    if (!confirm(`참가자 고정 주소(QR)를 회차 ${current}에 연결할까요?\n지금 연결된 회차 ${active || '(없음)'}는 연결이 해제됩니다.`)) return;
+    try { await be.setActiveSession(current); msg('참가자 주소를 이 회차에 연결했습니다.', true); } catch { msg('연결하지 못했습니다.'); }
+  };
+  $('#openAll').onclick = async () => {
+    try { await be.updateSession(current, { cbiOpen: true, needsOpen: true, strengthsOpen: true, ended: false }); msg('세 검사를 모두 열었습니다.', true); } catch { msg('열지 못했습니다.'); }
+  };
+  $('#closeAll').onclick = async () => {
+    try { await be.updateSession(current, { cbiOpen: false, needsOpen: false, strengthsOpen: false }); msg('세 검사를 모두 닫았습니다.', true); } catch { msg('닫지 못했습니다.'); }
+  };
   $('#clearBtn').onclick = async () => {
     if (!confirm(`회차 ${current}의 CBI 응답 결과를 모두 지우고 평균을 초기화할까요?`)) return;
     try { const n = await be.clearCbi(current); msg(`CBI 결과 ${n}건을 삭제했습니다.`, true); } catch { msg('삭제하지 못했습니다.'); }
@@ -272,7 +297,7 @@ function renderSession() {
   $('#delBtn').onclick = async () => {
     if (!confirm(`회차 ${current}의 CBI 익명 결과와 회차 기록을 모두 삭제할까요?\n삭제하면 되돌릴 수 없습니다.`)) return;
     const id = current;
-    try { stopCbi(); await be.deleteSession(id); current = ''; store.del('ws-admin:current'); renderedFor = ''; } catch { msg('삭제하지 못했습니다.'); }
+    try { stopCbi(); if (id === active) await be.setActiveSession(''); await be.deleteSession(id); current = ''; store.del('ws-admin:current'); renderedFor = ''; } catch { msg('삭제하지 못했습니다.'); }
   };
 
   startCbi(s.id);
@@ -303,7 +328,7 @@ async function startCbi(sid) {
   unCbi = await be.watchCbi(sid, rows => { cbiRows = rows; paintCbi(); }, () => msg('CBI 집계를 불러오지 못했습니다.'));
 }
 function stopCbi() { if (unCbi) { unCbi(); unCbi = null; } }
-function stopAll() { stopCbi(); if (unSessions) { unSessions(); unSessions = null; } renderedFor = ''; }
+function stopAll() { stopCbi(); if (unSessions) { unSessions(); unSessions = null; } if (unActive) { unActive(); unActive = null; } renderedFor = ''; }
 
 function paintCbi() {
   const a = averages(cbiRows), n = cbiRows.length;

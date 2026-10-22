@@ -28,6 +28,23 @@ export function isConfigured() {
 
 export const SESSION_RE = /^[A-Za-z0-9-]{3,40}$/;
 
+/* ───────── 현재 회차 (고정 주소용) ───────── */
+
+// config/active 문서의 sessionId = 고정 주소로 접속한 참가자가 쓰는 회차
+export async function getActiveSession() {
+  const { fs, db } = await fb();
+  const snap = await fs.getDoc(fs.doc(db, 'config', 'active'));
+  return snap.exists() ? (snap.data().sessionId || '') : '';
+}
+export async function setActiveSession(sessionId) {
+  const { fs, db } = await fb();
+  await fs.setDoc(fs.doc(db, 'config', 'active'), { sessionId: sessionId || '' });
+}
+export async function watchActiveSession(cb, onError) {
+  const { fs, db } = await fb();
+  return fs.onSnapshot(fs.doc(db, 'config', 'active'), s => cb(s.exists() ? (s.data().sessionId || '') : ''), onError);
+}
+
 /* ───────── 참가자 ───────── */
 
 // 회차 상태 조회. 문서가 없으면 exists:false

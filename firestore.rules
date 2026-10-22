@@ -49,6 +49,15 @@ service cloud.firestore {
       }
     }
 
+    // 현재 회차 지정 (고정 주소용): 누구나 읽기, 강사만 변경
+    match /config/active {
+      allow get: if true;
+      allow write: if isAdmin()
+        && request.resource.data.keys().hasOnly(['sessionId'])
+        && request.resource.data.sessionId is string
+        && (request.resource.data.sessionId == '' || request.resource.data.sessionId.matches('^[A-Za-z0-9-]{3,40}$'));
+    }
+
     // 그 외 모든 경로는 차단
     match /{document=**} {
       allow read, write: if false;
