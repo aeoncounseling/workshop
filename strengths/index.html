@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>나에게 있는 24가지 성격강점</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/common.css">
+</head>
+<body>
+<header class="test-head"><div class="wrap">
+  <span class="test-title">나에게 있는 24가지 성격강점</span>
+  <span class="test-sub">성격강점 자기이해 프로파일</span>
+</div></header>
+
+<main><div class="wrap" id="app"></div></main>
+
+<footer class="page-foot"><div class="wrap">
+  <p class="tiny">이 도구는 VIA Institute의 24 Character Strengths 분류체계를 참고해 워크숍용으로 새롭게 구성한 교육용 자기이해 프로파일입니다. VIA Survey의 문항을 사용한 정식 VIA 검사나 표준화된 심리검사가 아닙니다.</p>
+  <p class="tiny">응답과 결과, 입력한 내용은 이 기기 안에서만 처리되며 서버로 전송되거나 저장되지 않습니다.</p>
+  <div class="refs">
+    <p>Peterson, C., &amp; Seligman, M. E. P. (2004). <i>Character Strengths and Virtues.</i><br>VIA Institute on Character — VIA Classification of Character Strengths.</p>
+  </div>
+  <p class="brand">이온심리상담센터</p>
+</div></footer>
+
+<script type="module">
+import { $, esc, gate, store, runQuiz, barRow, fmt, rankDesc, spreadShuffle } from '../assets/quiz.js';
+import { ITEMS, OPTIONS, score } from '../assets/strengths-data.js';
+
+const app = $('#app');
+const sid = await gate(app, 'strengthsOpen');
+if (sid) start();
+
+function start() {
+  const KEY = 'ws-str:' + sid;
+  let order = store.get(KEY + ':order');
+  if (!Array.isArray(order) || order.length !== ITEMS.length) {
+    order = spreadShuffle(ITEMS, it => it.strength).map(it => it.id);
+    store.set(KEY + ':order', order);
+  }
+  const items = order.map(id => ITEMS.find(it => it.id === id));
+
+  const phase = store.get(KEY + ':phase');
+  if (phase === 'result') return showResult(store.get(KEY).answers);
+  if (phase === 'quiz') return quiz();
+  intro();
+
+  function intro() {
+    app.innerHTML = `<div class="card">
+      <p class="tiny" style="margin-bottom:14px">VIA Character Strengths의 24강점 분류체계를 참고하여 구성한 교육용 자기점검</p>
+      <p>사람은 여러 강점을 다양한 정도로 가지고 있고, 상황에 따라 사용하는 정도도 달라질 수 있습니다.</p>
+      <p>각 문장이 평소의 나와 얼마나 비슷한지 표시해 주세요.</p>
+      <ul class="plain small" style="margin-top:14px">${OPTIONS.map(o => `<li>${o.value}. ${esc(o.label)}</li>`).join('')}</ul>
+      <p class="tiny">총 ${ITEMS.length}문항</p>
+      <div class="actions"><button class="btn block" id="go">시작하기</button></div></div>`;
+    $('#go').onclick = () => { store.set(KEY + ':phase', 'quiz'); quiz(); };
+  }
+
+  function quiz() {
+    runQuiz({ root: app, key: KEY, items, onDone: answers => { store.set(KEY + ':phase', 'result'); showResult(answers); } });
+  }
+
+  function showResult(answers) {
+    const { strengths, virtues } = score(answers);
+    const ranked = rankDesc(strengths);
+    // 상위 5위까지 (동점은 함께). 동점이 많아 8개를 넘기면 그 동점 묶음은 전체 목록에서 보도록 함
+    let top = ranked.filter(s => s.rank <= 5);
+    let tieCut = false;
+    if (top.length > 8) {
+      const lastRank = top[top.length - 1].rank;
+      top = top.filter(s => s.rank < lastRank);
+      tieCut = true;
+      if (!top.length) { top = ranked.filter(s => s.rank === 1); tieCut = false; }
+    }
+    const vRanked = virtues; // 분류체계 순서 그대로 표시
+
+    app.innerHTML = `<div class="card">
+      <h1>나의 상위 성격강점</h1>
+      <div class="rank-cards" style="margin-top:16px">
+        ${top.map(s => `<div class="rank-card">
+          <div class="rank">${s.rank}위</div>
+          <div class="name">${esc(s.name)}</div>
+          <div class="score">${fmt(s.score, 2)} / 5</div>
+          <p class="def">${esc(s.def)}</p></div>`).join('')}
+      </div>
+      ${tieCut ? `<p class="tiny" style="margin-top:12px">같은 점수인 강점이 여러 개 있어, 나머지 순위는 아래 ‘24개 강점 전체 보기’에서 확인할 수 있습니다.</p>` : (top.length > 5 ? '<p class="tiny" style="margin-top:12px">점수가 같은 강점은 같은 순위로 함께 표시했습니다.</p>' : '')}</div>
+
+      <div class="card">
+        <h2>나의 6가지 덕목</h2>
+        <p class="tiny" style="margin-bottom:18px">각 덕목에 속한 강점 점수의 평균 (1~5)</p>
+        <div class="bars">
+          ${vRanked.map(v => barRow({ name: v.name, valueText: `${fmt(v.score, 2)} <small>/ 5</small>`, pct: (v.score - 1) / 4 * 100 })).join('')}
+        </div>
+        <details class="more" style="margin-top:22px">
+          <summary>24개 강점 전체 보기</summary>
+          <div class="bars" style="padding-bottom:8px">
+            ${ranked.map(s => barRow({ name: `${s.rank}. ${s.name}`, valueText: `${fmt(s.score, 2)} <small>/ 5</small>`, pct: (s.score - 1) / 4 * 100, hi: s.rank <= 5 })).join('')}
+          </div>
+        </details>
+      </div>
+
+      <div class="card">
+        <h2>나다운 강점</h2>
+        <p class="small">이 중 가장 ‘나다운 강점’이라고 느끼는 것은?</p>
+        <div class="chips">${top.map(s => `<button class="chip" data-k="${s.key}">${esc(s.name)}</button>`).join('')}</div>
+        <div id="refl" hidden>
+          <label class="field-label" for="r1">이 강점이 나에게 도움이 되었던 때는 언제였나요?</label>
+          <textarea class="field" id="r1" rows="2" maxlength="300" autocomplete="off"></textarea>
+          <label class="field-label" for="r2">이번 주 이 강점을 한 번 더 의도적으로 사용한다면 어디에서 사용할 수 있을까요?</label>
+          <textarea class="field" id="r2" rows="2" maxlength="300" autocomplete="off"></textarea>
+          <p class="tiny" style="margin-top:10px">입력한 내용은 저장되지 않습니다.</p>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:4px">
+        <button class="btn line small" id="edit">응답 수정</button>
+        <button class="btn text small" id="again">처음부터 다시</button>
+      </div>`;
+    window.scrollTo({ top: 0 });
+
+    app.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      app.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c));
+      $('#refl').hidden = false;
+    });
+    $('#edit').onclick = () => { const st = store.get(KEY); store.set(KEY, { answers: st.answers, idx: ITEMS.length - 1 }); store.set(KEY + ':phase', 'quiz'); quiz(); };
+    $('#again').onclick = () => { if (confirm('응답을 지우고 처음부터 다시 할까요?')) { store.del(KEY); store.del(KEY + ':phase'); intro(); } };
+  }
+}
+</script>
+</body>
+</html>

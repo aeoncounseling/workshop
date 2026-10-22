@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>현재 소진 상태 체크</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/common.css">
+</head>
+<body>
+<header class="test-head"><div class="wrap">
+  <span class="test-title">현재 소진 상태 체크</span>
+  <span class="test-sub">Copenhagen Burnout Inventory (CBI)</span>
+</div></header>
+
+<main><div class="wrap" id="app"></div></main>
+
+<footer class="page-foot"><div class="wrap">
+  <p class="tiny">19문항 응답은 이 기기 안에서만 계산됩니다. 집단 평균을 위해 세 영역 점수만 익명으로 전송되며, 이름·연락처 등은 받지 않습니다.</p>
+  <div class="refs">
+    <p>Copenhagen Burnout Inventory (CBI)<br>Kristensen, T. S., Borritz, M., Villadsen, E., &amp; Christensen, K. B. (2005). The Copenhagen Burnout Inventory: A new tool for the assessment of burnout. <i>Work &amp; Stress, 19</i>(3), 192–207.</p>
+    <p>Borritz, M. et al. (2006). Burnout among employees in human service work: design and baseline findings of the PUMA study. <i>Scandinavian Journal of Public Health, 34</i>, 49–58.</p>
+    <p>한국어 사용 참고: Jeon, G.-S. et al. (2019). Psychometric properties of the Korean version of the Copenhagen Burnout Inventory in Korean homecare workers for older adults. <i>PLOS ONE, 14</i>(8), e0221323.<br>이 페이지의 한국어 문항은 워크숍용으로 옮긴 것으로, 위 연구의 타당화 문항과 동일하지 않을 수 있습니다.</p>
+  </div>
+  <p class="brand">이온심리상담센터</p>
+</div></footer>
+
+<script type="module">
+import { $, esc, gate, store, runQuiz, barRow, fmt } from '../assets/quiz.js';
+import { ITEMS, SCALES, SCALE_KEYS, score } from '../assets/cbi-data.js';
+import { submitCbi } from '../assets/backend.js';
+
+const app = $('#app');
+const sid = await gate(app, 'cbiOpen');
+if (sid) start();
+
+function start() {
+  const KEY = 'ws-cbi:' + sid;
+  const phase = store.get(KEY + ':phase');
+  if (phase === 'result') return showResult(store.get(KEY).answers);
+  if (phase === 'quiz') return quiz();
+  intro();
+
+  function intro() {
+    app.innerHTML = `<div class="card">
+      <p>최근의 피로와 소진이 어느 영역에서 두드러지는지 살펴보는 19문항 자기점검입니다.</p>
+      <p>결과는 다음 세 영역으로 표시합니다.</p>
+      <ul class="plain">${SCALE_KEYS.map(k => `<li>${SCALES[k].name}</li>`).join('')}</ul>
+      <p class="small muted">이 결과만으로 의학적·정신건강 진단을 내릴 수는 없습니다.</p>
+      <div class="actions"><button class="btn block" id="go">시작하기</button></div></div>`;
+    $('#go').onclick = () => { store.set(KEY + ':phase', 'quiz'); quiz(); };
+  }
+
+  function quiz() {
+    runQuiz({ root: app, key: KEY, items: ITEMS, onDone: answers => { store.set(KEY + ':phase', 'result'); showResult(answers); } });
+  }
+
+  async function showResult(answers) {
+    const s = score(answers);
+    const vals = SCALE_KEYS.map(k => s[k]);
+    const max = Math.max(...vals);
+    const allSame = vals.every(v => v === vals[0]);
+    app.innerHTML = `<div class="card">
+      <h1>현재 나의 소진 프로파일</h1>
+      <div class="bars" style="margin-top:20px">
+        ${SCALE_KEYS.map(k => barRow({
+          name: SCALES[k].name,
+          valueText: `${fmt(s[k], 1)} <small>/ 100</small>`,
+          pct: s[k],
+          desc: SCALES[k].desc,
+          hi: !allSame && s[k] === max,
+          badge: !allSame && s[k] === max ? '현재 세 영역 중 상대적으로 높게 나타난 영역' : ''
+        })).join('')}
+      </div>
+      <p class="note">세 점수는 현재 자신의 피로가 어느 영역에서 상대적으로 두드러지는지 살펴보기 위한 자료입니다. 이 결과만으로 번아웃이나 정신건강 상태를 진단하지 않습니다.</p>
+      <p class="tiny" id="sendState" style="margin-top:14px"></p>
+      <div class="actions">
+        <button class="btn line small" id="edit">응답 수정</button>
+        <button class="btn text small" id="again">처음부터 다시</button>
+      </div></div>`;
+    window.scrollTo({ top: 0 });
+    $('#edit').onclick = () => { const st = store.get(KEY); store.set(KEY, { answers: st.answers, idx: ITEMS.length - 1 }); store.set(KEY + ':phase', 'quiz'); quiz(); };
+    $('#again').onclick = () => { if (confirm('응답을 지우고 처음부터 다시 할까요?')) { store.del(KEY); store.del(KEY + ':phase'); intro(); } };
+
+    const line = $('#sendState');
+    try {
+      await submitCbi(sid, s);
+      line.textContent = '세 영역 점수가 오늘 집단 평균에 익명으로 반영되었습니다.';
+    } catch (e) {
+      line.textContent = (e && e.code === 'permission-denied')
+        ? '현재 집단 평균 집계가 열려 있지 않아 점수가 전송되지 않았습니다.'
+        : '연결이 원활하지 않아 점수를 전송하지 못했습니다. 잠시 후 이 화면을 새로고침하면 다시 전송합니다.';
+    }
+  }
+}
+</script>
+</body>
+</html>

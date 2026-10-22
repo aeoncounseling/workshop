@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>지금 내 삶에서 중요한 것</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/common.css">
+</head>
+<body>
+<header class="test-head"><div class="wrap">
+  <span class="test-title">지금 내 삶에서 중요한 것</span>
+  <span class="test-sub">욕구·가치 우선순위 프로파일</span>
+</div></header>
+
+<main><div class="wrap" id="app"></div></main>
+
+<footer class="page-foot"><div class="wrap">
+  <p class="tiny">이 도구는 워크숍을 위해 구성한 교육용 자기점검으로, 표준화된 심리검사나 진단도구가 아닙니다.</p>
+  <p class="tiny">응답과 결과는 이 기기 안에서만 계산되며 서버로 전송되거나 저장되지 않습니다.</p>
+  <p class="brand">이온심리상담센터</p>
+</div></footer>
+
+<script type="module">
+import { $, esc, gate, store, runQuiz, barRow, fmt, rankDesc, spreadShuffle } from '../assets/quiz.js';
+import { ITEMS, OPTIONS, score } from '../assets/needs-data.js';
+
+const app = $('#app');
+const sid = await gate(app, 'needsOpen');
+if (sid) start();
+
+function start() {
+  const KEY = 'ws-needs:' + sid;
+  let order = store.get(KEY + ':order');
+  if (!Array.isArray(order) || order.length !== ITEMS.length) {
+    order = spreadShuffle(ITEMS, it => it.domain).map(it => it.id);
+    store.set(KEY + ':order', order);
+  }
+  const items = order.map(id => ITEMS.find(it => it.id === id));
+
+  const phase = store.get(KEY + ':phase');
+  if (phase === 'result') return showResult(store.get(KEY).answers);
+  if (phase === 'quiz') return quiz();
+  intro();
+
+  function intro() {
+    app.innerHTML = `<div class="card">
+      <p>요즘의 내 삶에서 각 내용이 얼마나 중요하게 느껴지는지 표시해 주세요.</p>
+      <p>정답은 없습니다.</p>
+      <p>현재 나에게 상대적으로 무엇이 중요한지를 돌아보기 위한 질문입니다.</p>
+      <ul class="plain small" style="margin-top:14px">${OPTIONS.map(o => `<li>${o.value}. ${esc(o.label)}</li>`).join('')}</ul>
+      <p class="tiny">총 ${ITEMS.length}문항</p>
+      <div class="actions"><button class="btn block" id="go">시작하기</button></div></div>`;
+    $('#go').onclick = () => { store.set(KEY + ':phase', 'quiz'); quiz(); };
+  }
+
+  function quiz() {
+    runQuiz({ root: app, key: KEY, items, onDone: answers => { store.set(KEY + ':phase', 'result'); showResult(answers); } });
+  }
+
+  function showResult(answers) {
+    const ranked = rankDesc(score(answers));
+    const top = ranked.filter(d => d.rank <= 3);
+    app.innerHTML = `<div class="card">
+      <h1>현재 나에게 중요한 것</h1>
+      <p class="small muted">점수가 높을수록 지금 그 영역을 중요하게 여긴다는 뜻입니다. 그 욕구가 부족하거나 결핍되어 있다는 뜻은 아닙니다.</p>
+      <div class="rank-cards" style="margin-top:18px">
+        ${top.map(d => `<div class="rank-card">
+          <div class="rank">${d.rank}순위</div>
+          <div class="name">${esc(d.name)}</div>
+          <div class="score">${fmt(d.score, 1)} / 5</div>
+          <p class="def">${esc(d.desc)}</p></div>`).join('')}
+      </div>
+      ${top.length > 3 ? '<p class="tiny" style="margin-top:12px">점수가 같은 영역은 같은 순위로 함께 표시했습니다.</p>' : ''}</div>
+
+      <div class="card">
+        <h2>8개 영역 전체</h2>
+        <p class="tiny" style="margin-bottom:18px">각 영역 5문항의 평균 (1~5)</p>
+        <div class="bars">
+          ${ranked.map(d => barRow({ name: `${d.rank}. ${d.name}`, valueText: `${fmt(d.score, 1)} <small>/ 5</small>`, pct: (d.score - 1) / 4 * 100, hi: d.rank <= 3 })).join('')}
+        </div>
+      </div>
+
+      <div class="card" id="fulfil">
+        <h2>한 가지 더 살펴보기</h2>
+        <p class="small">위의 상위 영역 중 하나를 골라 주세요.</p>
+        <div class="chips">${top.map(d => `<button class="chip" data-k="${d.key}">${esc(d.name)}</button>`).join('')}</div>
+        <div id="fq" hidden>
+          <p style="margin-top:18px"><b style="font-weight:500" id="fname"></b><br>이 영역은 현재 내 삶에서 얼마나 충족되고 있나요?</p>
+          <div class="slider-wrap">
+            <input type="range" min="0" max="10" step="1" value="5" id="fr" aria-label="충족 정도 0에서 10">
+            <div class="slider-scale"><span>0</span><span>10</span></div>
+            <div class="slider-value" id="fv">–</div>
+          </div>
+          <p class="note" id="fnote" hidden>중요하게 여기는 정도와 현재 실제 생활에서 채워지고 있는 정도는 서로 다를 수 있습니다.</p>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:4px">
+        <button class="btn line small" id="edit">응답 수정</button>
+        <button class="btn text small" id="again">처음부터 다시</button>
+      </div>`;
+    window.scrollTo({ top: 0 });
+
+    app.querySelectorAll('.chip').forEach(c => c.onclick = () => {
+      app.querySelectorAll('.chip').forEach(x => x.classList.toggle('on', x === c));
+      $('#fname').textContent = c.textContent;
+      $('#fq').hidden = false;
+      $('#fr').value = 5; $('#fv').textContent = '–'; $('#fnote').hidden = true;
+    });
+    $('#fr').oninput = e => { $('#fv').textContent = e.target.value; $('#fnote').hidden = false; };
+    $('#edit').onclick = () => { const st = store.get(KEY); store.set(KEY, { answers: st.answers, idx: ITEMS.length - 1 }); store.set(KEY + ':phase', 'quiz'); quiz(); };
+    $('#again').onclick = () => { if (confirm('응답을 지우고 처음부터 다시 할까요?')) { store.del(KEY); store.del(KEY + ':phase'); intro(); } };
+  }
+}
+</script>
+</body>
+</html>

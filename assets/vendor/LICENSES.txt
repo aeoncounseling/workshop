@@ -1,0 +1,6 @@
+firebase-app.js, firebase-auth.js, firebase-firestore.js
+  Firebase JavaScript SDK 13.1.0 — Copyright Google LLC — Apache License 2.0
+  (원본의 gstatic 경로 import만 같은 폴더의 firebase-app.js로 바꾸어 자체 호스팅)
+
+qrcode.mjs
+  qrcode-generator 2.0.4 — Copyright (c) Kazuhiko Arase — MIT License

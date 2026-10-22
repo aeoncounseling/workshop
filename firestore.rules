@@ -1,0 +1,57 @@
+rules_version = '2';
+
+// 워크숍 자기점검 보안규칙
+// - sessions/{sessionId}: 회차 열림/닫힘 상태만 담김 (개인정보 없음)
+// - sessions/{sessionId}/cbiResults/{uid}: CBI 세 점수 + 제출시각만 담김
+// ADMIN_EMAIL 자리에 강사 계정 이메일(소문자)을 넣습니다.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.email.lower() == 'ADMIN_EMAIL';
+    }
+
+    function isScore(v) {
+      return v is number && v >= 0 && v <= 100;
+    }
+
+    match /sessions/{sessionId} {
+      // 참가자 페이지가 해당 회차의 열림 여부를 확인하기 위한 단건 조회만 허용
+      allow get: if true;
+      // 회차 목록 조회·생성·변경·삭제는 강사만
+      allow list, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && sessionId.matches('^[A-Za-z0-9-]{3,40}$')
+        && request.resource.data.keys().hasOnly(['cbiOpen', 'needsOpen', 'strengthsOpen', 'ended', 'createdAt'])
+        && request.resource.data.cbiOpen is bool
+        && request.resource.data.needsOpen is bool
+        && request.resource.data.strengthsOpen is bool
+        && request.resource.data.ended is bool;
+
+      match /cbiResults/{uid} {
+        // 집계 읽기와 삭제는 강사만 (참가자는 자기 결과도 읽을 수 없음)
+        allow read, delete: if isAdmin();
+
+        // 참가자는 CBI가 열린 회차에, 자기 익명 UID 문서 하나에만, 세 점수만 쓸 수 있음
+        allow create, update: if request.auth != null
+          && request.auth.uid == uid
+          && get(/databases/$(database)/documents/sessions/$(sessionId)).data.cbiOpen == true
+          && get(/databases/$(database)/documents/sessions/$(sessionId)).data.ended != true
+          && request.resource.data.keys().hasOnly(['personalBurnout', 'workBurnout', 'patientBurnout', 'submittedAt'])
+          && request.resource.data.keys().hasAll(['personalBurnout', 'workBurnout', 'patientBurnout', 'submittedAt'])
+          && isScore(request.resource.data.personalBurnout)
+          && isScore(request.resource.data.workBurnout)
+          && isScore(request.resource.data.patientBurnout)
+          && request.resource.data.submittedAt == request.time;
+      }
+    }
+
+    // 그 외 모든 경로는 차단
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
