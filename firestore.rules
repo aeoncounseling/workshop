@@ -3,7 +3,7 @@ rules_version = '2';
 // 워크숍 자기점검 보안규칙
 // - sessions/{sessionId}: 회차 열림/닫힘 상태만 담김 (개인정보 없음)
 // - sessions/{sessionId}/cbiResults/{uid}: CBI 세 점수 + 제출시각만 담김
-// ADMIN_EMAIL 자리에 강사 계정 이메일(소문자)을 넣습니다.
+// 관리자(강사) 계정: ahrachocounseling@gmail.com
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -11,7 +11,7 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null
         && request.auth.token.firebase.sign_in_provider == 'password'
-        && request.auth.token.email.lower() == 'ADMIN_EMAIL';
+        && request.auth.token.email.lower() == 'ahrachocounseling@gmail.com';
     }
 
     function isScore(v) {
