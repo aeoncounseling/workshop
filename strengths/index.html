@@ -10,6 +10,20 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/common.css">
+<style>
+  .vtag { display: inline-block; font-size: 11px; color: var(--wood); border: 1px solid var(--divider); padding: 0 6px; margin-left: 4px; font-weight: 400; letter-spacing: 0.02em; vertical-align: 2px; }
+  .rank-card .rank .vtag { margin-left: 6px; }
+  .vgroup { border-top: 1px solid var(--divider); padding: 18px 0 6px; margin-top: 14px; }
+  .vhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .vname { font-family: var(--serif); font-size: 18px; }
+  .vscore { color: var(--wood); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .vscore small { color: var(--light); font-weight: 400; font-size: 12px; }
+  .vtrack { height: 8px; margin-bottom: 14px; }
+  .vtrack > i { background: var(--wood); }
+  .vsubs { gap: 12px; padding-left: 12px; border-left: 2px solid var(--wood-pale); }
+  .vsubs .bar-name { font-size: 14px; }
+  .vsubs .track { height: 8px; }
+</style>
 </head>
 <body>
 <header class="test-head"><div class="wrap">
@@ -30,7 +44,7 @@
 
 <script type="module">
 import { $, esc, gate, store, runQuiz, barRow, fmt, rankDesc, spreadShuffle } from '../assets/quiz.js';
-import { ITEMS, OPTIONS, score } from '../assets/strengths-data.js';
+import { ITEMS, OPTIONS, VIRTUES, score } from '../assets/strengths-data.js';
 
 const app = $('#app');
 const sid = await gate(app, 'strengthsOpen');
@@ -77,31 +91,41 @@ function start() {
       tieCut = true;
       if (!top.length) { top = ranked.filter(s => s.rank === 1); tieCut = false; }
     }
-    const vRanked = virtues; // 분류체계 순서 그대로 표시
+    const vName = Object.fromEntries(VIRTUES.map(v => [v.key, v.name]));
+    const row = (s, opts = {}) => `<div class="bar-row ${opts.hi ? 'hi' : ''}">
+      <div class="bar-head"><span class="bar-name">${opts.showRank === false ? '' : s.rank + '. '}${esc(s.name)}${opts.tag ? ` <span class="vtag">${esc(vName[s.virtue])}</span>` : ''}</span><span class="bar-val">${fmt(s.score, 2)} <small>/ 5</small></span></div>
+      <div class="track"><i style="width:${(s.score - 1) / 4 * 100}%"></i></div></div>`;
 
     app.innerHTML = `<div class="card">
       <h1>나의 상위 성격강점</h1>
       <div class="rank-cards" style="margin-top:16px">
         ${top.map(s => `<div class="rank-card">
-          <div class="rank">${s.rank}위</div>
+          <div class="rank">${s.rank}위 <span class="vtag">${esc(vName[s.virtue])}</span></div>
           <div class="name">${esc(s.name)}</div>
           <div class="score">${fmt(s.score, 2)} / 5</div>
           <p class="def">${esc(s.def)}</p></div>`).join('')}
       </div>
-      ${tieCut ? `<p class="tiny" style="margin-top:12px">같은 점수인 강점이 여러 개 있어, 나머지 순위는 아래 ‘24개 강점 전체 보기’에서 확인할 수 있습니다.</p>` : (top.length > 5 ? '<p class="tiny" style="margin-top:12px">점수가 같은 강점은 같은 순위로 함께 표시했습니다.</p>' : '')}</div>
+      ${tieCut ? `<p class="tiny" style="margin-top:12px">같은 점수인 강점이 여러 개 있어, 나머지 순위는 아래 ‘24개 강점 전체 순위’에서 확인할 수 있습니다.</p>` : (top.length > 5 ? '<p class="tiny" style="margin-top:12px">점수가 같은 강점은 같은 순위로 함께 표시했습니다.</p>' : '')}</div>
 
       <div class="card">
-        <h2>나의 6가지 덕목</h2>
-        <p class="tiny" style="margin-bottom:18px">각 덕목에 속한 강점 점수의 평균 (1~5)</p>
-        <div class="bars">
-          ${vRanked.map(v => barRow({ name: v.name, valueText: `${fmt(v.score, 2)} <small>/ 5</small>`, pct: (v.score - 1) / 4 * 100 })).join('')}
-        </div>
-        <details class="more" style="margin-top:22px">
-          <summary>24개 강점 전체 보기</summary>
-          <div class="bars" style="padding-bottom:8px">
-            ${ranked.map(s => barRow({ name: `${s.rank}. ${s.name}`, valueText: `${fmt(s.score, 2)} <small>/ 5</small>`, pct: (s.score - 1) / 4 * 100, hi: s.rank <= 5 })).join('')}
-          </div>
-        </details>
+        <h2>24개 강점 전체 순위</h2>
+        <p class="tiny" style="margin-bottom:18px">각 강점 5문항의 평균 (1~5). 이름 옆은 그 강점이 속한 덕목입니다. 점수가 같으면 같은 순위입니다.</p>
+        <div class="bars">${ranked.map(s => row(s, { tag: true, hi: s.rank <= 5 })).join('')}</div>
+      </div>
+
+      <div class="card">
+        <h2>6가지 덕목과 나의 강점</h2>
+        <p class="tiny" style="margin-bottom:6px">덕목 점수는 그 덕목에 속한 강점 점수의 평균 (1~5)</p>
+        ${virtues.map(v => {
+          const subs = ranked.filter(s => s.virtue === v.key);
+          return `<div class="vgroup">
+            <div class="vhead"><span class="vname">${esc(v.name)}</span><span class="vscore">${fmt(v.score, 2)} <small>/ 5</small></span></div>
+            <div class="track vtrack"><i style="width:${(v.score - 1) / 4 * 100}%"></i></div>
+            <div class="bars vsubs">${subs.map(s => `<div class="bar-row ${s.rank <= 5 ? 'hi' : ''}">
+              <div class="bar-head"><span class="bar-name">${esc(s.name)} <span class="vtag">${s.rank}위</span></span><span class="bar-val">${fmt(s.score, 2)}</span></div>
+              <div class="track"><i style="width:${(s.score - 1) / 4 * 100}%"></i></div></div>`).join('')}</div>
+          </div>`;
+        }).join('')}
       </div>
 
       <div class="card">
