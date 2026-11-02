@@ -10,7 +10,7 @@ export const OPTIONS = [
 
 export const VIRTUES = [
   { key: 'wisdom', name: '지성', en: 'Wisdom & Knowledge' },
-  { key: 'humanity', name: '인애', en: 'Humanity' },
+  { key: 'humanity', name: '인간애', en: 'Humanity' },
   { key: 'courage', name: '용기', en: 'Courage' },
   { key: 'temperance', name: '절제', en: 'Temperance' },
   { key: 'justice', name: '정의', en: 'Justice' },
@@ -65,7 +65,7 @@ export const STRENGTHS = [
       '여러 경험에서 얻은 교훈을 새로운 상황에 맞게 적용한다.'
     ] },
 
-  /* ── 인애 ── */
+  /* ── 인간애 ── */
   { key: 'love', name: '사랑', en: 'Love', virtue: 'humanity',
     def: '다른 사람과의 친밀한 관계를 소중하게 여기고 실천하는 능력. 다른 사람을 사랑하고, 다른 사람의 사랑을 받아들일 수 있는 능력을 포함합니다.',
     items: [
